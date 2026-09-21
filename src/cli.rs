@@ -50,6 +50,15 @@ enum Command {
         /// A repository, as PATH or PATH@MACHINE; repeatable
         #[arg(long = "repo", value_name = "PATH[@MACHINE]")]
         repos: Vec<String>,
+        /// Agent kind for coordinator and threads (default: claude)
+        #[arg(long, value_name = "KIND", value_parser = parse_agent_kind)]
+        agent: Option<String>,
+        /// Coordinator agent kind (overrides --agent)
+        #[arg(long, value_name = "KIND", value_parser = parse_agent_kind)]
+        coordinator_agent: Option<String>,
+        /// Thread agent kind (overrides --agent)
+        #[arg(long, value_name = "KIND", value_parser = parse_agent_kind)]
+        thread_agent: Option<String>,
     },
     /// List projects
     List {
@@ -238,6 +247,14 @@ enum ThreadCommand {
     },
 }
 
+fn parse_agent_kind(value: &str) -> std::result::Result<String, String> {
+    let kind = value.trim();
+    if kind.is_empty() {
+        return Err("agent kind must not be blank".into());
+    }
+    Ok(kind.to_owned())
+}
+
 /// `-` is standard input; a relative path is relative to the caller's directory.
 fn read_text(file: &str) -> Result<String> {
     use std::io::Read;
@@ -291,9 +308,13 @@ pub fn run() -> Result<()> {
     };
 
     match cli.command {
-        Command::New { name, goal, repos } => {
+        Command::New { name, goal, repos, agent, coordinator_agent, thread_agent } => {
             let repos = repos.iter().map(|arg| project::parse_repo_arg(arg)).collect();
-            let project = project::create(&ctx.root, &name, &goal, repos)?;
+            let options = project::CreateOptions {
+                coordinator_agent: coordinator_agent.or_else(|| agent.clone()),
+                thread_agent: thread_agent.or(agent),
+            };
+            let project = project::create_with_options(&ctx.root, &name, &goal, repos, options)?;
             println!("created `{}` at {}", project.slug, project.dir().display());
             println!("next: {} open {}", coordinator::current_prefix(&ctx.root)?, project.slug);
             Ok(())

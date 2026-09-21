@@ -76,3 +76,43 @@ fn ticker_start_without_projects_creates_nothing() {
     assert!(!home.path().join(".herdr-projects").exists());
     assert!(!home.path().join(".config").exists());
 }
+
+#[test]
+fn new_with_agent_flag_sets_coordinator_and_thread_agent() {
+    let home = tempfile::tempdir().unwrap();
+    let root = home.path().join("root");
+    let root_arg = root.to_str().unwrap();
+    assert!(hp(home.path(), &["--root", root_arg, "new", "Demo", "--agent", "omp"]).status.success());
+
+    let project_md = std::fs::read_to_string(root.join("demo/PROJECT.md")).unwrap();
+    assert!(project_md.contains("coordinator_agent = \"omp\""), "expected coordinator_agent in:\n{project_md}");
+    assert!(project_md.contains("thread_agent = \"omp\""), "expected thread_agent in:\n{project_md}");
+}
+
+#[test]
+fn new_with_specific_agent_flags_overrides_agent() {
+    let home = tempfile::tempdir().unwrap();
+    let root = home.path().join("root");
+    let root_arg = root.to_str().unwrap();
+    assert!(hp(home.path(), &["--root", root_arg, "new", "Demo", "--agent", "omp", "--coordinator-agent", "custom-coord"]).status.success());
+
+    let project_md = std::fs::read_to_string(root.join("demo/PROJECT.md")).unwrap();
+    assert!(project_md.contains("coordinator_agent = \"custom-coord\""), "expected custom coordinator_agent in:\n{project_md}");
+    assert!(project_md.contains("thread_agent = \"omp\""), "expected thread_agent in:\n{project_md}");
+}
+
+#[test]
+fn new_rejects_blank_agents_before_creating_a_project() {
+    let home = tempfile::tempdir().unwrap();
+    let root = home.path().join("root");
+    for flag in ["--agent", "--coordinator-agent", "--thread-agent"] {
+        for value in ["", "   "] {
+            let out = hp(home.path(), &["--root", root.to_str().unwrap(), "new", "Demo", flag, value]);
+            assert!(!out.status.success(), "accepted {flag}={value:?}");
+            assert!(!root.exists());
+        }
+    }
+    let out = hp(home.path(), &["--root", root.to_str().unwrap(), "new", "Demo", "--agent", "omp", "--coordinator-agent", ""]);
+    assert!(!out.status.success());
+    assert!(!root.exists());
+}
